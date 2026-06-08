@@ -259,6 +259,22 @@ const FLAGS = {
   'England':'🏴󠁧󠁢󠁥󠁳󠁴󠁿','Portugal':'🇵🇹','Morocco':'🇲🇦','Croatia':'🇭🇷','Australia':'🇦🇺','Curacao':'🇨🇼','Saudi Arabia':'🇸🇦'
 };
 
+// Flags keyed by ESPN abbreviation — covers all likely 2026 WC nations
+const CODE_FLAGS = {
+  FRA:'🇫🇷',ARG:'🇦🇷',BEL:'🇧🇪',JPN:'🇯🇵',IRN:'🇮🇷',KOR:'🇰🇷',
+  ESP:'🇪🇸',BRA:'🇧🇷',COL:'🇨🇴',NOR:'🇳🇴',TUN:'🇹🇳',CPV:'🇨🇻',
+  ENG:'🏴󠁧󠁢󠁥󠁳󠁴󠁿',POR:'🇵🇹',MAR:'🇲🇦',CRO:'🇭🇷',AUS:'🇦🇺',CUW:'🇨🇼',KSA:'🇸🇦',
+  USA:'🇺🇸',MEX:'🇲🇽',CAN:'🇨🇦',
+  URU:'🇺🇾',ECU:'🇪🇨',CHI:'🇨🇱',PAR:'🇵🇾',VEN:'🇻🇪',BOL:'🇧🇴',PER:'🇵🇪',
+  GER:'🇩🇪',NED:'🇳🇱',ITA:'🇮🇹',SUI:'🇨🇭',AUT:'🇦🇹',DEN:'🇩🇰',SWE:'🇸🇪',
+  TUR:'🇹🇷',UKR:'🇺🇦',POL:'🇵🇱',HUN:'🇭🇺',SVK:'🇸🇰',CZE:'🇨🇿',
+  SRB:'🇷🇸',GRE:'🇬🇷',ALB:'🇦🇱',SVN:'🇸🇮',GEO:'🇬🇪',WAL:'🏴󠁧󠁢󠁷󠁬󠁳󠁿',SCO:'🏴󠁧󠁢󠁳󠁣󠁴󠁿',
+  SEN:'🇸🇳',CIV:'🇨🇮',EGY:'🇪🇬',NGA:'🇳🇬',RSA:'🇿🇦',GHA:'🇬🇭',CMR:'🇨🇲',
+  MLI:'🇲🇱',AGO:'🇦🇴',ZAM:'🇿🇲',UGA:'🇺🇬',KEN:'🇰🇪',TAN:'🇹🇿',
+  QAT:'🇶🇦',IRQ:'🇮🇶',JOR:'🇯🇴',UZB:'🇺🇿',CHN:'🇨🇳',OMA:'🇴🇲',BHR:'🇧🇭',
+  NZL:'🇳🇿',FIJ:'🇫🇯',TAH:'🇵🇫',
+};
+
 const CODE2NAME = Object.fromEntries(Object.entries(CODES).map(([k,v])=>[v,k]));
 const ALL_CODES = new Set(Object.values(CODES));
 
@@ -652,8 +668,8 @@ function renderMatches() {
     }
 
     const scoreStr = (m.done || m.live) ? `${m.hScore} – ${m.aScore}` : 'vs';
-    const hFlag = FLAGS[CODE2NAME[m.hCode]] || '';
-    const aFlag = FLAGS[CODE2NAME[m.aCode]] || '';
+    const hFlag = CODE_FLAGS[m.hCode] || '';
+    const aFlag = CODE_FLAGS[m.aCode] || '';
 
     return `
       <div class="match-card${hi?' hi':''}">
@@ -661,7 +677,7 @@ function renderMatches() {
         <div class="mc-teams">
           <div class="mc-team home"><div class="mc-tname${hSweep?' sweep':''}">${hFlag} ${m.hName}</div></div>
           <div class="mc-score">${scoreStr}</div>
-          <div class="mc-team away"><div class="mc-tname${aSweep?' sweep':''}">${m.aName} ${aFlag}</div></div>
+          <div class="mc-team away"><div class="mc-tname${aSweep?' sweep':''}">${aFlag} ${m.aName}</div></div>
         </div>
         <div class="mc-round">${ROUND_LBL[m.round] || 'Group Stage'}</div>
       </div>`;
