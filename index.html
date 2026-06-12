@@ -458,8 +458,7 @@ async function loadData() {
     const stData = await espnGet('/standings').catch(()=>null);
     applyStandings(stData);
 
-    // 2. Fetch a rolling window: 3 days back + 5 days ahead (within tournament window)
-    //    This shows recent results AND upcoming fixtures
+    // 2. Rolling window: 3 days back + 5 days ahead (within tournament dates)
     const today = todayYMD();
     const windowMatches = [];
     for (let offset = -3; offset <= 5; offset++) {
@@ -499,8 +498,8 @@ async function loadData() {
       const bUp = !b.done && !b.live;
       if (aUp && !bUp) return -1;
       if (!aUp && bUp) return 1;
-      if (aUp && bUp) return (a.time||'').localeCompare(b.time||''); // upcoming: soonest first
-      return (b.time||'').localeCompare(a.time||''); // completed: most recent first
+      if (aUp && bUp) return (a.time||'').localeCompare(b.time||'');
+      return (b.time||'').localeCompare(a.time||'');
     });
 
     state.matches = allMatches.slice(0, 30);
@@ -509,17 +508,16 @@ async function loadData() {
 
   } catch(e) {
     state.error = 'Could not fetch latest scores — showing current data.';
-    console.warn(e);
+    console.warn('loadData error:', e);
+  } finally {
+    // Always runs — even if render() throws, the timer still resets
+    state.loading = false;
+    setBusy(false);
+    try { render(); } catch(e) { console.warn('render error:', e); }
+    const hasLive = state.matches.some(m => m.live);
+    clearTimeout(window._nextRefresh);
+    window._nextRefresh = setTimeout(loadData, hasLive ? 60_000 : 300_000);
   }
-
-  state.loading = false;
-  setBusy(false);
-  render();
-
-  // Auto-reschedule: 1 min if live matches, else 5 min
-  const hasLive = state.matches.some(m=>m.live);
-  clearTimeout(window._nextRefresh);
-  window._nextRefresh = setTimeout(loadData, hasLive ? 60_000 : 300_000);
 }
 
 // ═══════════════════════════════════════════════
@@ -709,6 +707,9 @@ setInterval(() => { if (todayYMD() < '20260611') renderCountdown(); }, 60_000);
 
 // ── Boot ──
 loadData();
+
+// Safety net: force a reload every 10 minutes regardless of timer state
+setInterval(() => { if (!state.loading) loadData(); }, 10 * 60_000);
 </script>
 </body>
 </html>
