@@ -389,12 +389,14 @@ function parseScoreboard(data, roundKey) {
     const live   = status?.name === 'STATUS_IN_PROGRESS';
     const clock  = ev.status?.displayClock || '';
 
+    const hWon = !!(home?.winner);
+    const aWon = !!(away?.winner);
     const match = {
       id: ev.id, round: roundKey||'group',
       hCode, aCode,
       hName: home?.team?.displayName || hCode || '?',
       aName: away?.team?.displayName || aCode || '?',
-      hScore, aScore, done, live, clock,
+      hScore, aScore, hWon, aWon, done, live, clock,
       time: ev.date,
       statusText: status?.shortDetail || (done?'FT':live?'LIVE':'')
     };
@@ -458,17 +460,16 @@ async function loadData() {
     const stData = await espnGet('/standings').catch(()=>null);
     applyStandings(stData);
 
-    // 2. Rolling window: 3 days back + 5 days ahead (within tournament dates)
+    // 2. Fetch every tournament day from June 11 up to today+5
+    //    This gives us all completed results (for W/D/L) + upcoming fixtures
     const today = todayYMD();
     const windowMatches = [];
-    for (let offset = -3; offset <= 5; offset++) {
-      const d = new Date();
-      d.setDate(d.getDate() + offset);
+    const fetchEnd = new Date(); fetchEnd.setDate(fetchEnd.getDate() + 5);
+    for (let d = new Date('2026-06-11'); d <= fetchEnd; d.setDate(d.getDate() + 1)) {
       const ds = d.toISOString().slice(0,10).replace(/-/g,'');
-      if (ds >= '20260611' && ds <= '20260719') {
-        const data = await espnGet(`/scoreboard?dates=${ds}`).catch(()=>null);
-        windowMatches.push(...parseScoreboard(data, null));
-      }
+      if (ds > '20260719') break;
+      const data = await espnGet(`/scoreboard?dates=${ds}`).catch(()=>null);
+      windowMatches.push(...parseScoreboard(data, null));
     }
 
     // 3. Knockout rounds for dates that have passed
@@ -503,6 +504,29 @@ async function loadData() {
     });
 
     state.matches = allMatches.slice(0, 30);
+
+    // Recalculate W/D/L from completed group stage results
+    // (ESPN standings API returns empty early in tournament — use scoreboard winner flags)
+    Object.values(CODES).forEach(abbr => {
+      state.stats[abbr].w = 0;
+      state.stats[abbr].d = 0;
+      state.stats[abbr].l = 0;
+    });
+    allMatches.forEach(m => {
+      if (!m.done || m.round !== 'group') return;
+      const isDraw = !m.hWon && !m.aWon;
+      if (ALL_CODES.has(m.hCode)) {
+        if (m.hWon)       state.stats[m.hCode].w++;
+        else if (isDraw)  state.stats[m.hCode].d++;
+        else              state.stats[m.hCode].l++;
+      }
+      if (ALL_CODES.has(m.aCode)) {
+        if (m.aWon)       state.stats[m.aCode].w++;
+        else if (isDraw)  state.stats[m.aCode].d++;
+        else              state.stats[m.aCode].l++;
+      }
+    });
+
     markEliminated();
     state.lastUpdated = new Date();
 
