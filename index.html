@@ -429,8 +429,13 @@ function parseScoreboard(data, roundKey) {
 // Mark eliminated teams (played 3 group games, group stage over, not in any KO)
 function markEliminated() {
   const today = todayYMD();
-  if (today < '20260627') return; // group stage not over
 
+  // Only mark teams eliminated once the Round of 32 has actually kicked off —
+  // before that, we can't tell who advanced vs who's out (fixtures not yet scheduled).
+  const r32Started = KO_DATES.r32.some(d => d <= today);
+  if (!r32Started) return;
+
+  // Any team appearing in a KO round fixture (played or scheduled) has advanced.
   const koTeams = new Set();
   state.matches.forEach(m => {
     if (m.round !== 'group') { koTeams.add(m.hCode); koTeams.add(m.aCode); }
@@ -438,8 +443,7 @@ function markEliminated() {
 
   Object.values(CODES).forEach(abbr => {
     const s = state.stats[abbr];
-    if (!s) return;
-    if (s.stage !== 'group') return;
+    if (!s || s.stage !== 'group') return;
     if ((s.w + s.d + s.l) >= 3 && !koTeams.has(abbr)) {
       s.out = true;
     }
@@ -472,11 +476,15 @@ async function loadData() {
       windowMatches.push(...parseScoreboard(data, null));
     }
 
-    // 3. Knockout rounds for dates that have passed
+    // 3. Knockout rounds — fetch past dates AND up to 7 days ahead
+    //    so upcoming fixtures are visible and teams aren't wrongly marked eliminated
+    const koFetchEnd = new Date();
+    koFetchEnd.setDate(koFetchEnd.getDate() + 7);
+    const koFetchEndStr = koFetchEnd.toISOString().slice(0,10).replace(/-/g,'');
     const koMatches = [];
     for (const [rnd, dates] of Object.entries(KO_DATES)) {
       for (const d of dates) {
-        if (d <= today) {
+        if (d <= koFetchEndStr) {
           const data = await espnGet(`/scoreboard?dates=${d}`).catch(()=>null);
           koMatches.push(...parseScoreboard(data, rnd));
         }
