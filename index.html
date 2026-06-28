@@ -428,22 +428,27 @@ function parseScoreboard(data, roundKey) {
 
 // Mark eliminated teams (played 3 group games, group stage over, not in any KO)
 function markEliminated() {
-  const today = todayYMD();
-
-  // Only mark teams eliminated once the Round of 32 has actually kicked off —
-  // before that, we can't tell who advanced vs who's out (fixtures not yet scheduled).
-  const r32Started = KO_DATES.r32.some(d => d <= today);
-  if (!r32Started) return;
-
-  // Any team appearing in a KO round fixture (played or scheduled) has advanced.
+  // Collect every team we've confirmed is in a knockout fixture (played or scheduled)
   const koTeams = new Set();
   state.matches.forEach(m => {
     if (m.round !== 'group') { koTeams.add(m.hCode); koTeams.add(m.aCode); }
   });
 
+  // Path 1 — lost a completed KO match → out, no ambiguity
+  state.matches.forEach(m => {
+    if (m.round === 'group' || !m.done) return;
+    if (m.hWon && ALL_CODES.has(m.aCode)) state.stats[m.aCode].out = true;
+    if (m.aWon && ALL_CODES.has(m.hCode)) state.stats[m.hCode].out = true;
+  });
+
+  // Path 2 — didn't qualify from group stage
+  // Only run once we have confirmed KO fixture data for at least one sweep country,
+  // so we don't fire during the gap between group stage ending and ESPN publishing
+  // the full R32 bracket (including best-8 third-place teams).
+  if (koTeams.size === 0) return;
   Object.values(CODES).forEach(abbr => {
     const s = state.stats[abbr];
-    if (!s || s.stage !== 'group') return;
+    if (!s || s.stage !== 'group' || s.out) return;
     if ((s.w + s.d + s.l) >= 3 && !koTeams.has(abbr)) {
       s.out = true;
     }
@@ -519,6 +524,7 @@ async function loadData() {
       state.stats[abbr].w = 0;
       state.stats[abbr].d = 0;
       state.stats[abbr].l = 0;
+      state.stats[abbr].out = false; // always reset so stale eliminations don't stick
     });
     allMatches.forEach(m => {
       if (!m.done || m.round !== 'group') return;
