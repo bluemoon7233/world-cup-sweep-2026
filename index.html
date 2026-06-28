@@ -580,7 +580,7 @@ async function loadData() {
       state.stats[abbr].l = 0;
       state.stats[abbr].out = false; // always reset so stale eliminations don't stick
     });
-    allMatches.forEach(m => {
+    sweepOnly.forEach(m => {
       if (!m.done || m.round !== 'group') return;
       const isDraw = !m.hWon && !m.aWon;
       if (ALL_CODES.has(m.hCode)) {
