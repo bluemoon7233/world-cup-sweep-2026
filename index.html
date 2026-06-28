@@ -515,14 +515,17 @@ async function loadData() {
     const stData = await espnGet('/standings').catch(()=>null);
     applyStandings(stData);
 
-    // 2. Fetch every tournament day from June 11 up to today+5
-    //    This gives us all completed results (for W/D/L) + upcoming fixtures
+    // 2. Fetch group stage days only (June 11–26).
+    //    Stopping at June 26 prevents overlap with the KO loop below —
+    //    if both loops fetch the same date, dedup would discard the KO version
+    //    and R32 matches would be labelled 'group', breaking stage bonuses.
     const today = todayYMD();
     const windowMatches = [];
+    const groupEnd = new Date('2026-06-27'); // exclusive upper bound
     const fetchEnd = new Date(); fetchEnd.setDate(fetchEnd.getDate() + 5);
-    for (let d = new Date('2026-06-11'); d <= fetchEnd; d.setDate(d.getDate() + 1)) {
+    const windowEnd = new Date(Math.min(groupEnd, fetchEnd));
+    for (let d = new Date('2026-06-11'); d < windowEnd; d.setDate(d.getDate() + 1)) {
       const ds = d.toISOString().slice(0,10).replace(/-/g,'');
-      if (ds > '20260719') break;
       const data = await espnGet(`/scoreboard?dates=${ds}`).catch(()=>null);
       windowMatches.push(...parseScoreboard(data, null));
     }
