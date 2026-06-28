@@ -521,7 +521,7 @@ async function loadData() {
     //    and R32 matches would be labelled 'group', breaking stage bonuses.
     const today = todayYMD();
     const windowMatches = [];
-    const groupEnd = new Date('2026-06-27'); // exclusive upper bound
+    const groupEnd = new Date('2026-06-28'); // exclusive upper bound — group stage ran through June 27
     const fetchEnd = new Date(); fetchEnd.setDate(fetchEnd.getDate() + 5);
     const windowEnd = new Date(Math.min(groupEnd, fetchEnd));
     for (let d = new Date('2026-06-11'); d < windowEnd; d.setDate(d.getDate() + 1)) {
