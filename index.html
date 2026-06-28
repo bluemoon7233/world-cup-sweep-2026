@@ -255,9 +255,6 @@
   <div class="sec-label">Leaderboard</div>
   <div id="lb-grid"></div>
 
-  <div class="sec-label" id="live-label">Live Scores</div>
-  <div id="live-grid"><div class="no-data">Loading…</div></div>
-
   <div class="sec-label">Points System</div>
   <div class="pts-key" style="margin-bottom:28px">
     <span class="pts-pill"><b>3</b> Group win</span>
@@ -545,16 +542,15 @@ async function loadData() {
       }
     }
 
-    // Combine & deduplicate ALL matches (for live scores display)
+    // Deduplicate and filter to sweep countries only
     const seen = new Set();
-    const deduped = [...windowMatches, ...koMatches].filter(m => {
+    const sweepOnly = [...windowMatches, ...koMatches].filter(m => {
       if (seen.has(m.id)) return false;
       seen.add(m.id);
-      return true;
+      return ALL_CODES.has(m.hCode) || ALL_CODES.has(m.aCode);
     });
 
-    // Sort helper: live → upcoming (soonest) → completed (most recent)
-    const sortMatches = arr => arr.sort((a,b) => {
+    sweepOnly.sort((a,b) => {
       if (a.live && !b.live) return -1;
       if (!a.live && b.live) return 1;
       const aUp = !a.done && !a.live;
@@ -565,12 +561,7 @@ async function loadData() {
       return (b.time||'').localeCompare(a.time||'');
     });
 
-    // allMatches = every WC match in our window (for live scores section)
-    state.allMatches = sortMatches([...deduped]).slice(0, 60);
-
-    // matches = sweep-country-only subset (for points calc & elimination)
-    const sweepOnly = deduped.filter(m => ALL_CODES.has(m.hCode) || ALL_CODES.has(m.aCode));
-    state.matches = sortMatches(sweepOnly).slice(0, 40);
+    state.matches = sweepOnly.slice(0, 40);
 
     // Recalculate W/D/L from completed group stage results
     // (ESPN standings API returns empty early in tournament — use scoreboard winner flags)
@@ -640,7 +631,6 @@ function render() {
   renderError();
   renderCountdown();
   renderLeaderboard();
-  renderLiveSection();
   renderTeamCards();
   renderMatches();
   renderUpdated();
