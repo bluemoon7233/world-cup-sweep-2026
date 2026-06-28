@@ -151,6 +151,51 @@
     .b-win   { background: rgba(255,215,0,0.25);   color: #FFD700; }
     .b-out   { background: rgba(200,0,0,0.12);     color: rgba(255,100,100,0.55); }
 
+    /* ── Live section ──────────────────────────── */
+    #live-grid { display: grid; gap: 10px; margin-bottom: 28px; }
+
+    .live-card {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px; padding: 16px 20px;
+      transition: transform 0.15s;
+    }
+    .live-card:hover { transform: translateY(-2px); }
+    .live-card.is-live {
+      border-color: rgba(255,68,68,0.35);
+      background: rgba(255,68,68,0.06);
+    }
+    .live-card.is-sweep {
+      border-color: rgba(255,215,0,0.3);
+      background: rgba(255,215,0,0.04);
+    }
+    .live-card.is-live.is-sweep {
+      border-color: rgba(255,68,68,0.5);
+      background: rgba(255,68,68,0.08);
+    }
+    .lc-top {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 14px; font-size: 0.65rem;
+    }
+    .lc-status-live { color: #FF4444; font-weight: 700; letter-spacing: 0.5px; }
+    .lc-status-done { color: rgba(255,255,255,0.35); }
+    .lc-status-soon { color: #4A90E2; }
+    .lc-round { color: rgba(255,255,255,0.28); }
+    .lc-sweep-tag { color: var(--gold); font-size: 0.62rem; }
+    .lc-teams {
+      display: flex; align-items: center;
+      justify-content: space-between; gap: 8px;
+    }
+    .lc-team { flex: 1; text-align: center; }
+    .lc-flag { font-size: 2rem; line-height: 1.1; }
+    .lc-name { font-size: 0.82rem; font-weight: 600; margin-top: 5px; line-height: 1.2; }
+    .lc-name.sweep-hi { font-weight: 700; }
+    .lc-score {
+      font-size: clamp(2rem, 6vw, 2.8rem); font-weight: 800;
+      min-width: 72px; text-align: center; letter-spacing: 1px;
+    }
+    .lc-score.live-score { color: #FF6B6B; }
+
     /* ── Matches ───────────────────────────────── */
     #matches-grid { display: grid; gap: 10px; margin-bottom: 28px; }
 
@@ -209,6 +254,9 @@
 
   <div class="sec-label">Leaderboard</div>
   <div id="lb-grid"></div>
+
+  <div class="sec-label" id="live-label">Live Scores</div>
+  <div id="live-grid"><div class="no-data">Loading…</div></div>
 
   <div class="sec-label">Points System</div>
   <div class="pts-key" style="margin-bottom:28px">
@@ -308,8 +356,9 @@ const BADGE = {
 //  STATE
 // ═══════════════════════════════════════════════
 const state = {
-  stats: {},      // normCode → { w, d, l, stage, out }
-  matches: [],    // filtered to sweep countries
+  stats: {},       // normCode → { w, d, l, stage, out }
+  matches: [],     // filtered to sweep countries (for points/elimination)
+  allMatches: [],  // ALL WC matches in window (for live scores display)
   loading: false,
   lastUpdated: null,
   error: null
@@ -496,16 +545,16 @@ async function loadData() {
       }
     }
 
-    // Combine, deduplicate, filter to sweep countries
+    // Combine & deduplicate ALL matches (for live scores display)
     const seen = new Set();
-    const allMatches = [...windowMatches, ...koMatches].filter(m => {
+    const deduped = [...windowMatches, ...koMatches].filter(m => {
       if (seen.has(m.id)) return false;
       seen.add(m.id);
-      return ALL_CODES.has(m.hCode) || ALL_CODES.has(m.aCode);
+      return true;
     });
 
-    // Sort: live first → upcoming (soonest first) → completed (most recent first)
-    allMatches.sort((a,b) => {
+    // Sort helper: live → upcoming (soonest) → completed (most recent)
+    const sortMatches = arr => arr.sort((a,b) => {
       if (a.live && !b.live) return -1;
       if (!a.live && b.live) return 1;
       const aUp = !a.done && !a.live;
@@ -516,7 +565,12 @@ async function loadData() {
       return (b.time||'').localeCompare(a.time||'');
     });
 
-    state.matches = allMatches.slice(0, 30);
+    // allMatches = every WC match in our window (for live scores section)
+    state.allMatches = sortMatches([...deduped]).slice(0, 60);
+
+    // matches = sweep-country-only subset (for points calc & elimination)
+    const sweepOnly = deduped.filter(m => ALL_CODES.has(m.hCode) || ALL_CODES.has(m.aCode));
+    state.matches = sortMatches(sweepOnly).slice(0, 40);
 
     // Recalculate W/D/L from completed group stage results
     // (ESPN standings API returns empty early in tournament — use scoreboard winner flags)
@@ -586,9 +640,99 @@ function render() {
   renderError();
   renderCountdown();
   renderLeaderboard();
+  renderLiveSection();
   renderTeamCards();
   renderMatches();
   renderUpdated();
+}
+
+// Returns the sweep team colour for a given ESPN country code (or null)
+function getSweepColor(abbr) {
+  for (const [, t] of Object.entries(TEAMS)) {
+    if (t.countries.some(c => CODES[c] === abbr)) return t.color;
+  }
+  return null;
+}
+
+const ROUND_LBL = {
+  group:'Group Stage', r32:'Round of 32', r16:'Round of 16',
+  qf:'Quarter Final', sf:'Semi Final', final:'Final'
+};
+
+function renderLiveSection() {
+  const lbl  = document.getElementById('live-label');
+  const grid = document.getElementById('live-grid');
+  const all  = state.allMatches || [];
+
+  const live     = all.filter(m => m.live);
+  const upcoming = all.filter(m => !m.live && !m.done);
+  const recent   = all.filter(m => m.done).slice(0, 6);
+
+  // Choose what to show and set the section title
+  let toShow, title;
+  if (live.length > 0) {
+    toShow = live;
+    title  = `🔴 Live Now &nbsp;·&nbsp; ${live.length} match${live.length > 1 ? 'es' : ''}`;
+  } else if (upcoming.length > 0) {
+    toShow = upcoming.slice(0, 6);
+    title  = '⏰ Upcoming Matches';
+  } else if (recent.length > 0) {
+    toShow = recent;
+    title  = '✅ Recent Results';
+  } else {
+    lbl.innerHTML = 'Live Scores';
+    grid.innerHTML = `<div class="no-data">⚽ No matches in window — check back soon.</div>`;
+    return;
+  }
+
+  lbl.innerHTML = title;
+  grid.innerHTML = toShow.map(m => {
+    const hSweep  = ALL_CODES.has(m.hCode);
+    const aSweep  = ALL_CODES.has(m.aCode);
+    const hColor  = getSweepColor(m.hCode);
+    const aColor  = getSweepColor(m.aCode);
+    const hFlag   = CODE_FLAGS[m.hCode] || '';
+    const aFlag   = CODE_FLAGS[m.aCode] || '';
+    const isSweep = hSweep || aSweep;
+
+    let statusHtml, statusCls;
+    if (m.live) {
+      statusHtml = `<span class="lc-status-live">🔴 LIVE · ${m.clock || ''}</span>`;
+    } else if (m.done) {
+      statusHtml = `<span class="lc-status-done">Full Time</span>`;
+    } else {
+      const dt = m.time ? new Date(m.time) : null;
+      const ts = dt ? dt.toLocaleString('en-AU', {
+        weekday:'short', month:'short', day:'numeric',
+        hour:'2-digit', minute:'2-digit', timeZoneName:'short'
+      }) : 'Upcoming';
+      statusHtml = `<span class="lc-status-soon">${ts}</span>`;
+    }
+
+    const scoreStr = (m.live || m.done) ? `${m.hScore} – ${m.aScore}` : 'vs';
+
+    return `
+      <div class="live-card ${m.live ? 'is-live' : ''} ${isSweep ? 'is-sweep' : ''}">
+        <div class="lc-top">
+          ${statusHtml}
+          <span class="lc-round">${ROUND_LBL[m.round] || 'Group Stage'}</span>
+          ${isSweep ? '<span class="lc-sweep-tag">⭐ Your sweep</span>' : ''}
+        </div>
+        <div class="lc-teams">
+          <div class="lc-team">
+            <div class="lc-flag">${hFlag}</div>
+            <div class="lc-name ${hSweep ? 'sweep-hi' : ''}"
+                 ${hColor ? `style="color:${hColor}"` : ''}>${m.hName}</div>
+          </div>
+          <div class="lc-score ${m.live ? 'live-score' : ''}">${scoreStr}</div>
+          <div class="lc-team">
+            <div class="lc-flag">${aFlag}</div>
+            <div class="lc-name ${aSweep ? 'sweep-hi' : ''}"
+                 ${aColor ? `style="color:${aColor}"` : ''}>${m.aName}</div>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
 }
 
 function renderError() {
@@ -692,7 +836,7 @@ function renderMatches() {
     return;
   }
 
-  const ROUND_LBL = { group:'Group Stage', r32:'Round of 32', r16:'Round of 16', qf:'Quarter Final', sf:'Semi Final', final:'Final' };
+  // ROUND_LBL is defined at module level
 
   grid.innerHTML = state.matches.map(m => {
     const hSweep = ALL_CODES.has(m.hCode);
